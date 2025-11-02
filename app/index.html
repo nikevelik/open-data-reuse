@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>"Open Data Reuse" Project</title>
   <style>
-    body {
+    /* body {
       background-color: black;
       color: white;
       font-family: sans-serif;
       text-align: center;
       padding: 20px;
-    }
+    } */
     select {
       margin: 10px;
       padding: 5px;
@@ -30,8 +30,16 @@
     }
   </style>
 </head>
+
+<!-- Add this in the <head> section -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <body>
   <h1>Приложение за визуализация на резултатите от изпит НВО за седми клас</h1>
+
+  <!-- Chart container -->
+  <canvas id="avgChart" width="800" height="300"></canvas>
+  <canvas id="partChart" width="800" height="300"></canvas>
 
   <label for="yearSelect">Избери година:</label>
   <select id="yearSelect"></select>
@@ -64,6 +72,7 @@
       const data = await loadData(year);
       summary[year] = Array.isArray(data) ? data : [];
     }
+
     return summary;
   }
 
@@ -103,9 +112,95 @@
     renderTable(Object.keys(summary)[0]);
 
     select.addEventListener('change', e => renderTable(e.target.value));
+
+    // --- Build Chart Data ---
+    const years = Object.keys(summary);
+    const partBel = [];
+    const partMath = [];
+    const avgBEL = [];
+    const avgMAT = [];
+
+    years.forEach(year => {
+      const data = summary[year];
+      const rows = data.slice(1);
+
+      const belIndex = 6;
+      const matIndex = 8;
+      const partBelIndex = 5;
+      const partMatIndex = 7;
+
+      const belScores = rows.map(r => parseFloat(r[belIndex])).filter(n => !isNaN(n));
+      const matScores = rows.map(r => parseFloat(r[matIndex])).filter(n => !isNaN(n));
+      const belPart = rows.map(r => parseFloat(r[partBelIndex])).filter(n => !isNaN(n));
+      const matPart = rows.map(r => parseFloat(r[partMatIndex])).filter(n => !isNaN(n));
+
+      const belAvg = belScores.reduce((a,b)=>a+b,0)/belScores.length || 0;
+      const matAvg = matScores.reduce((a,b)=>a+b,0)/matScores.length || 0;
+      const belTotalPart = belPart.reduce((a,b)=>a+b,0);
+      const matTotalPart = matPart.reduce((a,b)=>a+b,0);
+
+      avgBEL.push(belAvg.toFixed(2));
+      avgMAT.push(matAvg.toFixed(2));
+      partBel.push(belTotalPart);
+      partMath.push(matTotalPart);
+    });
+
+    console.log(JSON.stringify({
+      bel: partBel,
+      mat: partMath
+    }))
+    // --- Render Chart ---
+    const ctx = document.getElementById('avgChart').getContext('2d');
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: years,
+        datasets: [
+          { label: 'Среден BEL', data: avgBEL, borderColor: 'red', backgroundColor: 'transparent' },
+          { label: 'Среден MAT', data: avgMAT, borderColor: 'blue', backgroundColor: 'transparent' }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'top' } },
+        scales: {
+          y: { beginAtZero: true, title: { display: true, text: 'Среден резултат' } },
+          x: { title: { display: true, text: 'Година' } }
+        }
+      }
+    });
+
+    // --- Render Chart ---
+    const ctx2 = document.getElementById('partChart').getContext('2d');
+    
+    new Chart(ctx2, {
+      type: 'line',
+      data: {
+        labels: years,
+        datasets: [
+          { label: 'Явили се BEL', data: partBel, borderColor: 'red', backgroundColor: 'transparent' },
+          { label: 'Явили се MAT', data: partMath, borderColor: 'blue', backgroundColor: 'transparent' }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'top' } },
+        scales: {
+  y: {
+    min: 54000,
+    max: 61000,
+    title: { display: true, text: 'Явили се' }
+  },
+  x: { title: { display: true, text: 'Година' } }
+}
+
+      }
+    });
+  
   }
 
   init();
   </script>
 </body>
+
 </html>
