@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>"Open Data Reuse" Project</title>
+  <style>
+    body {
+      background-color: black;
+      color: white;
+      font-family: sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    select {
+      margin: 10px;
+      padding: 5px;
+    }
+    table {
+      margin: 20px auto;
+      border-collapse: collapse;
+      width: 90%;
+      background-color: #fff;
+      color: #000;
+    }
+    th, td {
+      border: 1px solid #333;
+      padding: 6px;
+      font-size: 0.9em;
+    }
+  </style>
+</head>
+<body>
+  <h1>Приложение за визуализация на резултатите от изпит НВО за седми клас</h1>
+
+  <label for="yearSelect">Избери година:</label>
+  <select id="yearSelect"></select>
+
+  <div id="tableContainer"></div>
+
+  <script>
+  async function loadData(year) {
+    const DATA_URLS = {
+      2018: "./source/exam/nvo/grade-07/by_school/2018-2019.json",
+      2019: "./source/exam/nvo/grade-07/by_school/2019-2020.json",
+      2020: "./source/exam/nvo/grade-07/by_school/2020-2021.json",
+      2021: "./source/exam/nvo/grade-07/by_school/2021-2022.json",
+      2022: "./source/exam/nvo/grade-07/by_school/2022-2023.json",
+      2023: "./source/exam/nvo/grade-07/by_school/2023-2024.json",
+      2024: "./source/exam/nvo/grade-07/by_school/2024-2025.json"
+    };
+
+    const url = DATA_URLS[year];
+    if (!url) throw new Error(`No data for year ${year}`);
+    const response = await fetch(url);
+    return await response.json();
+  }
+
+  async function buildSummary() {
+    const summary = {};
+    const years = [2018, 2019, 2020, 2021, 2022, 2023, 2024];
+
+    for (const year of years) {
+      const data = await loadData(year);
+      summary[year] = Array.isArray(data) ? data : [];
+    }
+    return summary;
+  }
+
+  async function init() {
+    const summary = await buildSummary();
+    const select = document.getElementById('yearSelect');
+    const container = document.getElementById('tableContainer');
+
+    // Populate dropdown
+    for (const year of Object.keys(summary)) {
+      const option = document.createElement('option');
+      option.value = year;
+      option.textContent = year;
+      select.appendChild(option);
+    }
+
+    function renderTable(year) {
+      const data = summary[year];
+      if (!data || data.length === 0) {
+        container.innerHTML = "<p>Няма данни</p>";
+        return;
+      }
+
+      const headers = data[0];
+      const rows = data.slice(1);
+      const html = `
+        <table>
+          <thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+          <tbody>
+            ${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}
+          </tbody>
+        </table>
+      `;
+      container.innerHTML = html;
+    }
+
+    renderTable(Object.keys(summary)[0]);
+
+    select.addEventListener('change', e => renderTable(e.target.value));
+  }
+
+  init();
+  </script>
+</body>
+</html>
