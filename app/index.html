@@ -1,206 +1,262 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="bg">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>"Open Data Reuse" Project</title>
-  <style>
-    /* body {
-      background-color: black;
-      color: white;
-      font-family: sans-serif;
-      text-align: center;
-      padding: 20px;
-    } */
-    select {
-      margin: 10px;
-      padding: 5px;
-    }
-    table {
-      margin: 20px auto;
-      border-collapse: collapse;
-      width: 90%;
-      background-color: #fff;
-      color: #000;
-    }
-    th, td {
-      border: 1px solid #333;
-      padding: 6px;
-      font-size: 0.9em;
-    }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bulgaria Municipalities Map & NVO Exam Visualization</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: sans-serif;
+    background: #f9f9f9;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  h1 {
+    text-align: center;
+    margin-top: 20px;
+  }
+
+  svg {
+    width: min(90vmin, 900px);
+    height: auto;
+    display: block;
+    margin: 20px 0;
+  }
+
+  /* Map styles */
+  .municipality {
+    fill: none;
+    stroke: #000;
+    stroke-width: 0.7px;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+    cursor: pointer;
+    transition: stroke 0.2s, fill 0.2s;
+    pointer-events: all;
+  }
+  .municipality:hover {
+    fill: #e6f3ff;
+    stroke: #0077cc;
+    stroke-width: 1.2px;
+  }
+  .highlight {
+    fill: #e6f3ff;
+    stroke: #0077cc;
+    stroke-width: 1.2px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease-in-out;
+  }
+  .highlight.visible { opacity: 1; }
+
+  .tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: rgba(255,255,255,0.85);
+    border: 1px solid #666;
+    padding: 2px 4px;
+    font-size: 12px;
+    color: #333;
+    border-radius: 3px;
+    white-space: nowrap;
+    display: none;
+  }
+  .tooltip.visible { display: block; }
+
+  /* Table & select styles */
+  select { margin: 10px; padding: 5px; }
+  table {
+    margin: 20px auto;
+    border-collapse: collapse;
+    width: 90%;
+    background-color: #fff;
+    color: #000;
+  }
+  th, td {
+    border: 1px solid #333;
+    padding: 6px;
+    font-size: 0.9em;
+  }
+
+  canvas { margin: 20px 0; }
+</style>
 </head>
-
-<!-- Add this in the <head> section -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 <body>
-  <h1>Приложение за визуализация на резултатите от изпит НВО за седми клас</h1>
+  <h1>Карта на общините в България & Резултати от НВО</h1>
 
-  <!-- Chart container -->
+  <!-- Map -->
+  <div id="tooltip" class="tooltip"></div>
+  <svg id="map" viewBox="0 0 1000 600"></svg>
+
+  <!-- Exam controls -->
+  <label for="yearSelect">Избери година:</label>
+  <select id="yearSelect"></select>
+  <div id="tableContainer"></div>
+
+  <!-- Charts -->
   <canvas id="avgChart" width="800" height="300"></canvas>
   <canvas id="partChart" width="800" height="300"></canvas>
 
-  <label for="yearSelect">Избери година:</label>
-  <select id="yearSelect"></select>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+/* ----------------- MAP ----------------- */
+const Data = {
+  geojson: async() => d3.json("https://raw.githubusercontent.com/yurukov/Bulgaria-geocoding/master/municipalities.geojson"),
+  municip: async() => d3.csv("https://raw.githubusercontent.com/yurukov/Bulgaria-geocoding/master/municipalities.csv")
+};
+const svg = d3.select("#map");
+const path = d3.geoPath();
+const tooltip = d3.select("#tooltip");
 
-  <div id="tableContainer"></div>
+function renderMunicipalities(geojson, csvData) {
+  const nameByCode = {};
+  csvData.forEach(d => {
+    nameByCode[d.code || d.EKATTE || d.nuts4] = d.name;
+  });
 
-  <script>
-  async function loadData(year) {
-    const DATA_URLS = {
-      2018: "./source/exam/nvo/grade-07/by_school/2018-2019.json",
-      2019: "./source/exam/nvo/grade-07/by_school/2019-2020.json",
-      2020: "./source/exam/nvo/grade-07/by_school/2020-2021.json",
-      2021: "./source/exam/nvo/grade-07/by_school/2021-2022.json",
-      2022: "./source/exam/nvo/grade-07/by_school/2022-2023.json",
-      2023: "./source/exam/nvo/grade-07/by_school/2023-2024.json",
-      2024: "./source/exam/nvo/grade-07/by_school/2024-2025.json"
-    };
+  const projection = d3.geoMercator().fitSize([1000, 600], geojson);
+  path.projection(projection);
 
-    const url = DATA_URLS[year];
-    if (!url) throw new Error(`No data for year ${year}`);
-    const response = await fetch(url);
-    return await response.json();
-  }
+  const municipalities = svg.selectAll("path.municipality")
+    .data(geojson.features)
+    .enter()
+    .append("path")
+    .attr("class", "municipality")
+    .attr("d", path);
 
-  async function buildSummary() {
-    const summary = {};
-    const years = [2018, 2019, 2020, 2021, 2022, 2023, 2024];
+  const highlight = svg.append("path")
+    .attr("class", "highlight");
 
-    for (const year of years) {
-      const data = await loadData(year);
-      summary[year] = Array.isArray(data) ? data : [];
-    }
-
-    return summary;
-  }
-
-  async function init() {
-    const summary = await buildSummary();
-    const select = document.getElementById('yearSelect');
-    const container = document.getElementById('tableContainer');
-
-    // Populate dropdown
-    for (const year of Object.keys(summary)) {
-      const option = document.createElement('option');
-      option.value = year;
-      option.textContent = year;
-      select.appendChild(option);
-    }
-
-    function renderTable(year) {
-      const data = summary[year];
-      if (!data || data.length === 0) {
-        container.innerHTML = "<p>Няма данни</p>";
-        return;
-      }
-
-      const headers = data[0];
-      const rows = data.slice(1);
-      const html = `
-        <table>
-          <thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
-          <tbody>
-            ${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}
-          </tbody>
-        </table>
-      `;
-      container.innerHTML = html;
-    }
-
-    renderTable(Object.keys(summary)[0]);
-
-    select.addEventListener('change', e => renderTable(e.target.value));
-
-    // --- Build Chart Data ---
-    const years = Object.keys(summary);
-    const partBel = [];
-    const partMath = [];
-    const avgBEL = [];
-    const avgMAT = [];
-
-    years.forEach(year => {
-      const data = summary[year];
-      const rows = data.slice(1);
-
-      const belIndex = 6;
-      const matIndex = 8;
-      const partBelIndex = 5;
-      const partMatIndex = 7;
-
-      const belScores = rows.map(r => parseFloat(r[belIndex])).filter(n => !isNaN(n));
-      const matScores = rows.map(r => parseFloat(r[matIndex])).filter(n => !isNaN(n));
-      const belPart = rows.map(r => parseFloat(r[partBelIndex])).filter(n => !isNaN(n));
-      const matPart = rows.map(r => parseFloat(r[partMatIndex])).filter(n => !isNaN(n));
-
-      const belAvg = belScores.reduce((a,b)=>a+b,0)/belScores.length || 0;
-      const matAvg = matScores.reduce((a,b)=>a+b,0)/matScores.length || 0;
-      const belTotalPart = belPart.reduce((a,b)=>a+b,0);
-      const matTotalPart = matPart.reduce((a,b)=>a+b,0);
-
-      avgBEL.push(belAvg.toFixed(2));
-      avgMAT.push(matAvg.toFixed(2));
-      partBel.push(belTotalPart);
-      partMath.push(matTotalPart);
+  municipalities
+    .on("mouseover", function(event, d) {
+      const code = d.properties.nuts4;
+      const name = nameByCode[code] || `(${code})`;
+      highlight.attr("d", path(d)).classed("visible", true);
+      tooltip.classed("visible", true).html(name);
+    })
+    .on("mousemove", function(event) {
+      tooltip.style("left", (event.pageX + 8) + "px")
+             .style("top", (event.pageY + 8) + "px");
+    })
+    .on("mouseout", function() {
+      highlight.classed("visible", false);
+      tooltip.classed("visible", false);
     });
-
-    console.log(JSON.stringify({
-      bel: partBel,
-      mat: partMath
-    }))
-    // --- Render Chart ---
-    const ctx = document.getElementById('avgChart').getContext('2d');
-    new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: years,
-        datasets: [
-          { label: 'Среден BEL', data: avgBEL, borderColor: 'red', backgroundColor: 'transparent' },
-          { label: 'Среден MAT', data: avgMAT, borderColor: 'blue', backgroundColor: 'transparent' }
-        ]
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { position: 'top' } },
-        scales: {
-          y: { beginAtZero: true, title: { display: true, text: 'Среден резултат' } },
-          x: { title: { display: true, text: 'Година' } }
-        }
-      }
-    });
-
-    // --- Render Chart ---
-    const ctx2 = document.getElementById('partChart').getContext('2d');
-    
-    new Chart(ctx2, {
-      type: 'line',
-      data: {
-        labels: years,
-        datasets: [
-          { label: 'Явили се BEL', data: partBel, borderColor: 'red', backgroundColor: 'transparent' },
-          { label: 'Явили се MAT', data: partMath, borderColor: 'blue', backgroundColor: 'transparent' }
-        ]
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { position: 'top' } },
-        scales: {
-  y: {
-    min: 54000,
-    max: 61000,
-    title: { display: true, text: 'Явили се' }
-  },
-  x: { title: { display: true, text: 'Година' } }
 }
 
-      }
-    });
-  
+async function drawMap() {
+  try {
+    renderMunicipalities(await Data.geojson(), await Data.municip());
+  } catch {
+    svg.append("text").attr("x", 20).attr("y", 30).attr("fill", "red")
+       .text("Failed to load municipalities or names");
+  }
+}
+drawMap();
+
+/* ----------------- NVO DATA ----------------- */
+async function loadData(year) {
+  const DATA_URLS = {
+    2018: "./source/exam/nvo/grade-07/by_school/2018-2019.json",
+    2019: "./source/exam/nvo/grade-07/by_school/2019-2020.json",
+    2020: "./source/exam/nvo/grade-07/by_school/2020-2021.json",
+    2021: "./source/exam/nvo/grade-07/by_school/2021-2022.json",
+    2022: "./source/exam/nvo/grade-07/by_school/2022-2023.json",
+    2023: "./source/exam/nvo/grade-07/by_school/2023-2024.json",
+    2024: "./source/exam/nvo/grade-07/by_school/2024-2025.json"
+  };
+  const url = DATA_URLS[year];
+  if (!url) throw new Error(`No data for year ${year}`);
+  const response = await fetch(url);
+  return await response.json();
+}
+
+async function buildSummary() {
+  const summary = {};
+  const years = [2018, 2019, 2020, 2021, 2022, 2023, 2024];
+  for (const year of years) {
+    const data = await loadData(year);
+    summary[year] = Array.isArray(data) ? data : [];
+  }
+  return summary;
+}
+
+async function init() {
+  const summary = await buildSummary();
+  const select = document.getElementById('yearSelect');
+  const container = document.getElementById('tableContainer');
+
+  for (const year of Object.keys(summary)) {
+    const option = document.createElement('option');
+    option.value = year;
+    option.textContent = year;
+    select.appendChild(option);
   }
 
-  init();
-  </script>
-</body>
+  function renderTable(year) {
+    const data = summary[year];
+    if (!data || data.length === 0) { container.innerHTML = "<p>Няма данни</p>"; return; }
+    const headers = data[0];
+    const rows = data.slice(1);
+    const html = `<table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+    container.innerHTML = html;
+  }
 
+  renderTable(Object.keys(summary)[0]);
+  select.addEventListener('change', e => renderTable(e.target.value));
+
+  // Charts
+  const years = Object.keys(summary);
+  const partBel = [], partMath = [], avgBEL = [], avgMAT = [];
+
+  years.forEach(year => {
+    const data = summary[year];
+    const rows = data.slice(1);
+    const belIndex = 6, matIndex = 8, partBelIndex = 5, partMatIndex = 7;
+    const belScores = rows.map(r=>parseFloat(r[belIndex])).filter(n=>!isNaN(n));
+    const matScores = rows.map(r=>parseFloat(r[matIndex])).filter(n=>!isNaN(n));
+    const belPart = rows.map(r=>parseFloat(r[partBelIndex])).filter(n=>!isNaN(n));
+    const matPart = rows.map(r=>parseFloat(r[partMatIndex])).filter(n=>!isNaN(n));
+    const belAvg = belScores.reduce((a,b)=>a+b,0)/belScores.length || 0;
+    const matAvg = matScores.reduce((a,b)=>a+b,0)/matScores.length || 0;
+    avgBEL.push(belAvg.toFixed(2));
+    avgMAT.push(matAvg.toFixed(2));
+    partBel.push(belPart.reduce((a,b)=>a+b,0));
+    partMath.push(matPart.reduce((a,b)=>a+b,0));
+  });
+
+  const ctx1 = document.getElementById('avgChart').getContext('2d');
+  new Chart(ctx1, {
+    type: 'line',
+    data: { labels: years, datasets:[
+      { label: 'Среден BEL', data: avgBEL, borderColor: 'red', backgroundColor: 'transparent' },
+      { label: 'Среден MAT', data: avgMAT, borderColor: 'blue', backgroundColor: 'transparent' }
+    ]},
+    options: { responsive:true, plugins:{legend:{position:'top'}},
+      scales:{ y:{beginAtZero:true, title:{display:true, text:'Среден резултат'}},
+               x:{title:{display:true,text:'Година'}} } }
+  });
+
+  const ctx2 = document.getElementById('partChart').getContext('2d');
+  new Chart(ctx2, {
+    type: 'line',
+    data: { labels: years, datasets:[
+      { label: 'Явили се BEL', data: partBel, borderColor: 'red', backgroundColor: 'transparent' },
+      { label: 'Явили се MAT', data: partMath, borderColor: 'blue', backgroundColor: 'transparent' }
+    ]},
+    options: { responsive:true, plugins:{legend:{position:'top'}},
+      scales:{ y:{ min:54000, max:61000, title:{display:true,text:'Явили се'}},
+               x:{title:{display:true,text:'Година'}} } }
+  });
+}
+init();
+</script>
+</body>
 </html>
