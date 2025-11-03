@@ -115,74 +115,71 @@ const select = document.getElementById('yearSelect');
 
 
 async function init() {
-  function renderMunicipalities(geojson, csvData) {
-  const nameByCode = {};
-  csvData.forEach(d => {
-    nameByCode[d.code || d.EKATTE || d.nuts4] = d.name;
-  });
 
-  const projection = d3.geoMercator().fitSize([1000, 600], geojson);
-  path.projection(projection);
-
-  const municipalities = svg.selectAll("path.municipality")
-    .data(geojson.features)
-    .enter()
-    .append("path")
-    .attr("class", "municipality")
-    .attr("d", path);
-
-  const highlight = svg.append("path")
-    .attr("class", "highlight");
-
-  municipalities
-    .on("mouseover", function(event, d) {
-      const code = d.properties.nuts4;
-      const name = nameByCode[code] || `(${code})`;
-      highlight.attr("d", path(d)).classed("visible", true);
-      tooltip.classed("visible", true).html(name);
-    })
-    .on("mousemove", function(event) {
-      tooltip.style("left", (event.pageX + 8) + "px")
-             .style("top", (event.pageY + 8) + "px");
-    })
-    .on("mouseout", function() {
-      highlight.classed("visible", false);
-      tooltip.classed("visible", false);
+  async function drawMap() {
+    function renderMap(geojson, csvData) {
+    const nameByCode = {};
+    csvData.forEach(d => {
+      nameByCode[d.code || d.EKATTE || d.nuts4] = d.name;
     });
-}
 
-async function drawMap() {
-  try {
-    renderMunicipalities(await Data.geojson(), await Data.municip());
-  } catch {
-    svg.append("text").attr("x", 20).attr("y", 30).attr("fill", "red")
-       .text("Failed to load municipalities or names");
+    const projection = d3.geoMercator().fitSize([1000, 600], geojson);
+    path.projection(projection);
+
+    const municipalities = svg.selectAll("path.municipality")
+      .data(geojson.features)
+      .enter()
+      .append("path")
+      .attr("class", "municipality")
+      .attr("d", path);
+
+    const highlight = svg.append("path")
+      .attr("class", "highlight");
+
+    municipalities
+      .on("mouseover", function(event, d) {
+        const code = d.properties.nuts4;
+        const name = nameByCode[code] || `(${code})`;
+        highlight.attr("d", path(d)).classed("visible", true);
+        tooltip.classed("visible", true).html(name);
+      })
+      .on("mousemove", function(event) {
+        tooltip.style("left", (event.pageX + 8) + "px")
+              .style("top", (event.pageY + 8) + "px");
+      })
+      .on("mouseout", function() {
+        highlight.classed("visible", false);
+        tooltip.classed("visible", false);
+      });
   }
-}
-drawMap();
-  const summary = await Data.summary();
-
-  for (const year of Object.keys(summary)) {
-    const option = document.createElement('option');
-    option.value = year;
-    option.textContent = year;
-    select.appendChild(option);
+    const geojson = await Data.geojson();
+    const csv = await Data.municip();
+    await renderMap(geojson, csv);
   }
-
-  function renderTable(year) {
-    const data = summary[year];
-    if (!data || data.length === 0) { container.innerHTML = "<p>Няма данни</p>"; return; }
-    const headers = data[0];
-    const rows = data.slice(1);
-    const html = `<table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
-      <tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
-    container.innerHTML = html;
-  }
-
-  renderTable(Object.keys(summary)[0]);
-  select.addEventListener('change', e => renderTable(e.target.value));
-
-  // Charts
+  async function makeTableAndCharts(){
+    function populateSelect(summary){
+      for (const year of Object.keys(summary)) {
+        const option = document.createElement('option');
+        option.value = year;
+        option.textContent = year;
+        select.appendChild(option);
+      }
+    }
+    function configTable(summary){
+      function renderTable(year) {
+            const data = summary[year];
+            if (!data || data.length === 0) { container.innerHTML = "<p>Няма данни</p>"; return; }
+            const headers = data[0];
+            const rows = data.slice(1);
+            const html = `<table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+              <tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+            container.innerHTML = html;
+        }
+      renderTable(Object.keys(summary)[0]);
+      select.addEventListener('change', e => renderTable(e.target.value));
+    }
+    function configCharts(summary){
+          // Charts
   const years = Object.keys(summary);
   const partBel = [], partMath = [], avgBEL = [], avgMAT = [];
 
@@ -225,6 +222,14 @@ drawMap();
       scales:{ y:{ min:54000, max:61000, title:{display:true,text:'Явили се'}},
                x:{title:{display:true,text:'Година'}} } }
   });
+
+    }
+    const summary = await Data.summary();
+    configTable(summary);
+    configCharts(summary);
+  }
+  await makeTableAndCharts();
+  await drawMap();
 
 }
 init();
