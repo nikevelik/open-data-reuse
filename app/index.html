@@ -27,7 +27,6 @@
          }
          /* Map styles */
          .municipality {
-         fill: none;
          stroke: #000;
          stroke-width: 0.7px;
          stroke-linejoin: round;
@@ -105,14 +104,29 @@
          const MUNICIPALITY_KEY = 1;
          const MATAVG_KEY = 8;
 
-         function populateSelect(summary){
-               for (const year of Object.keys(summary)) {
-                 const option = document.createElement('option');
-                 option.value = year;
-                 option.textContent = year;
-                 select.appendChild(option);
-               }
-             }
+         function scoreToHex(score) {
+    if (score === null || isNaN(score)) return "#cccccc"; // gray for missing data
+
+    // Clamp the score between 0 and 100
+    score = Math.max(0, Math.min(100, score));
+
+    let r, g, b = 0;
+
+    if (score < 50) {
+        // red to yellow
+        r = 255;
+        g = Math.round(255 * (score / 50));
+    } else {
+        // yellow to green
+        g = 255;
+        r = Math.round(255 * ((100 - score) / 50));
+    }
+
+    // Convert each component to 2-digit hex
+    const toHex = x => x.toString(16).padStart(2, "0");
+
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
          
          async function init() {
           function populateSelect(summary){
@@ -170,7 +184,15 @@
                   .enter()
                   .append("path")
                   .attr("class", "municipality")
-                  .attr("d", path);
+                  .attr("d", path)
+                  .attr("fill", d => {
+                    const res = yearlyResults["2018"][d.properties.nuts4];
+                    console.log(res);
+                    return scoreToHex(res);
+                  })
+                  .attr("stroke", "#000")
+                  .attr("stroke-width", 0.7);
+
             
                 const highlight = svg.append("path")
                   .attr("class", "highlight");
@@ -193,6 +215,17 @@
                     highlight.classed("visible", false);
                     tooltip.classed("visible", false);
                   });
+
+                  select.addEventListener("change", () => {
+                    const year = select.value;
+                    svg.selectAll("path.municipality")
+                      .transition()
+                      .duration(500)
+                      .attr("fill", d => {
+                          const res = yearlyResults[year][d.properties.nuts4];
+                          return scoreToHex(res);
+                      });
+                });
              }
              const geojson = await Data.geojson();
              const csv = await Data.municip();
