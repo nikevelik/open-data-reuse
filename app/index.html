@@ -1,238 +1,153 @@
 <!doctype html>
 <html lang="bg">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Bulgaria Municipalities Map & NVO Exam Visualization</title>
-<link rel="icon" href="data:,">
-<style>
-  html, body {
-    margin: 0;
-    padding: 0;
-    font-family: sans-serif;
-    background: #f9f9f9;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-
-  h1 {
-    text-align: center;
-    margin-top: 20px;
-  }
-
-  svg {
-    width: min(90vmin, 900px);
-    height: auto;
-    display: block;
-    margin: 20px 0;
-  }
-
-  /* Map styles */
-  .municipality {
-    fill: none;
-    stroke: #000;
-    stroke-width: 0.7px;
-    stroke-linejoin: round;
-    stroke-linecap: round;
-    cursor: pointer;
-    transition: stroke 0.2s, fill 0.2s;
-    pointer-events: all;
-  }
-  .municipality:hover {
-    fill: #e6f3ff;
-    stroke: #0077cc;
-    stroke-width: 1.2px;
-  }
-  .highlight {
-    fill: #e6f3ff;
-    stroke: #0077cc;
-    stroke-width: 1.2px;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.15s ease-in-out;
-  }
-  .highlight.visible { opacity: 1; }
-
-  .tooltip {
-    position: absolute;
-    pointer-events: none;
-    background: rgba(255,255,255,0.85);
-    border: 1px solid #666;
-    padding: 2px 4px;
-    font-size: 12px;
-    color: #333;
-    border-radius: 3px;
-    white-space: nowrap;
-    display: none;
-  }
-  .tooltip.visible { display: block; }
-
-  /* Table & select styles */
-  select { margin: 10px; padding: 5px; }
-  table {
-    margin: 20px auto;
-    border-collapse: collapse;
-    width: 90%;
-    background-color: #fff;
-    color: #000;
-  }
-  th, td {
-    border: 1px solid #333;
-    padding: 6px;
-    font-size: 0.9em;
-  }
-
-  canvas { margin: 20px 0; }
-</style>
-</head>
-<body>
-  <h1>Карта на общините в България & Резултати от НВО</h1>
-
-  <!-- Map -->
-  <div id="tooltip" class="tooltip"></div>
-  <svg id="map" viewBox="0 0 1000 600"></svg>
-
-  <!-- Exam controls -->
-  <label for="yearSelect">Избери година:</label>
-  <select id="yearSelect"></select>
-  <div id="tableContainer"></div>
-
-  <!-- Charts -->
-  <canvas id="avgChart" width="800" height="300"></canvas>
-  <canvas id="partChart" width="800" height="300"></canvas>
-
-<script src="https://d3js.org/d3.v7.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="./data.js"></script>
-<script>
-/* ----------------- MAP ----------------- */
-const svg = d3.select("#map");
-const path = d3.geoPath();
-const tooltip = d3.select("#tooltip");
-const container = document.getElementById('tableContainer');
-const select = document.getElementById('yearSelect');
-
-
-async function init() {
-
-  async function drawMap() {
-    function renderMap(geojson, csvData) {
-    const nameByCode = {};
-    csvData.forEach(d => {
-      nameByCode[d.code || d.EKATTE || d.nuts4] = d.name;
-    });
-
-    const projection = d3.geoMercator().fitSize([1000, 600], geojson);
-    path.projection(projection);
-
-    const municipalities = svg.selectAll("path.municipality")
-      .data(geojson.features)
-      .enter()
-      .append("path")
-      .attr("class", "municipality")
-      .attr("d", path);
-
-    const highlight = svg.append("path")
-      .attr("class", "highlight");
-
-    municipalities
-      .on("mouseover", function(event, d) {
-        const code = d.properties.nuts4;
-        const name = nameByCode[code] || `(${code})`;
-        highlight.attr("d", path(d)).classed("visible", true);
-        tooltip.classed("visible", true).html(name);
-      })
-      .on("mousemove", function(event) {
-        tooltip.style("left", (event.pageX + 8) + "px")
-              .style("top", (event.pageY + 8) + "px");
-      })
-      .on("mouseout", function() {
-        highlight.classed("visible", false);
-        tooltip.classed("visible", false);
-      });
-  }
-    const geojson = await Data.geojson();
-    const csv = await Data.municip();
-    await renderMap(geojson, csv);
-  }
-  async function makeTableAndCharts(){
-    function populateSelect(summary){
-      for (const year of Object.keys(summary)) {
-        const option = document.createElement('option');
-        option.value = year;
-        option.textContent = year;
-        select.appendChild(option);
-      }
-    }
-    function configTable(summary){
-      function renderTable(year) {
-            const data = summary[year];
-            if (!data || data.length === 0) { container.innerHTML = "<p>Няма данни</p>"; return; }
-            const headers = data[0];
-            const rows = data.slice(1);
-            const html = `<table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
-              <tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
-            container.innerHTML = html;
-        }
-      renderTable(Object.keys(summary)[0]);
-      select.addEventListener('change', e => renderTable(e.target.value));
-    }
-    function configCharts(summary){
-          // Charts
-  const years = Object.keys(summary);
-  const partBel = [], partMath = [], avgBEL = [], avgMAT = [];
-
-  years.forEach(year => {
-    const data = summary[year];
-    const rows = data.slice(1);
-    const belIndex = 6, matIndex = 8, partBelIndex = 5, partMatIndex = 7;
-    const belScores = rows.map(r=>parseFloat(r[belIndex])).filter(n=>!isNaN(n));
-    const matScores = rows.map(r=>parseFloat(r[matIndex])).filter(n=>!isNaN(n));
-    const belPart = rows.map(r=>parseFloat(r[partBelIndex])).filter(n=>!isNaN(n));
-    const matPart = rows.map(r=>parseFloat(r[partMatIndex])).filter(n=>!isNaN(n));
-    const belAvg = belScores.reduce((a,b)=>a+b,0)/belScores.length || 0;
-    const matAvg = matScores.reduce((a,b)=>a+b,0)/matScores.length || 0;
-    avgBEL.push(belAvg.toFixed(2));
-    avgMAT.push(matAvg.toFixed(2));
-    partBel.push(belPart.reduce((a,b)=>a+b,0));
-    partMath.push(matPart.reduce((a,b)=>a+b,0));
-  });
-
-  const ctx1 = document.getElementById('avgChart').getContext('2d');
-  new Chart(ctx1, {
-    type: 'line',
-    data: { labels: years, datasets:[
-      { label: 'Среден BEL', data: avgBEL, borderColor: 'red', backgroundColor: 'transparent' },
-      { label: 'Среден MAT', data: avgMAT, borderColor: 'blue', backgroundColor: 'transparent' }
-    ]},
-    options: { responsive:true, plugins:{legend:{position:'top'}},
-      scales:{ y:{beginAtZero:true, title:{display:true, text:'Среден резултат'}},
-               x:{title:{display:true,text:'Година'}} } }
-  });
-
-  const ctx2 = document.getElementById('partChart').getContext('2d');
-  new Chart(ctx2, {
-    type: 'line',
-    data: { labels: years, datasets:[
-      { label: 'Явили се BEL', data: partBel, borderColor: 'red', backgroundColor: 'transparent' },
-      { label: 'Явили се MAT', data: partMath, borderColor: 'blue', backgroundColor: 'transparent' }
-    ]},
-    options: { responsive:true, plugins:{legend:{position:'top'}},
-      scales:{ y:{ min:54000, max:61000, title:{display:true,text:'Явили се'}},
-               x:{title:{display:true,text:'Година'}} } }
-  });
-
-    }
-    const summary = await Data.summary();
-    configTable(summary);
-    configCharts(summary);
-  }
-  await makeTableAndCharts();
-  await drawMap();
-
-}
-init();
-</script>
-</body>
+   <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Bulgaria Municipalities Map & NVO Exam Visualization</title>
+      <link rel="icon" href="data:,">
+      <style>
+         html, body {
+         margin: 0;
+         padding: 0;
+         font-family: sans-serif;
+         background: #f9f9f9;
+         display: flex;
+         flex-direction: column;
+         align-items: center;
+         }
+         h1 {
+         text-align: center;
+         margin-top: 20px;
+         }
+         svg {
+         width: min(90vmin, 900px);
+         height: auto;
+         display: block;
+         margin: 20px 0;
+         }
+         /* Map styles */
+         .municipality {
+         fill: none;
+         stroke: #000;
+         stroke-width: 0.7px;
+         stroke-linejoin: round;
+         stroke-linecap: round;
+         cursor: pointer;
+         transition: stroke 0.2s, fill 0.2s;
+         pointer-events: all;
+         }
+         .municipality:hover {
+         fill: #e6f3ff;
+         stroke: #0077cc;
+         stroke-width: 1.2px;
+         }
+         .highlight {
+         fill: #e6f3ff;
+         stroke: #0077cc;
+         stroke-width: 1.2px;
+         pointer-events: none;
+         opacity: 0;
+         transition: opacity 0.15s ease-in-out;
+         }
+         .highlight.visible { opacity: 1; }
+         .tooltip {
+         position: absolute;
+         pointer-events: none;
+         background: rgba(255,255,255,0.85);
+         border: 1px solid #666;
+         padding: 2px 4px;
+         font-size: 12px;
+         color: #333;
+         border-radius: 3px;
+         white-space: nowrap;
+         display: none;
+         }
+         .tooltip.visible { display: block; }
+         /* Table & select styles */
+         select { margin: 10px; padding: 5px; }
+         table {
+         margin: 20px auto;
+         border-collapse: collapse;
+         width: 90%;
+         background-color: #fff;
+         color: #000;
+         }
+         th, td {
+         border: 1px solid #333;
+         padding: 6px;
+         font-size: 0.9em;
+         }
+         canvas { margin: 20px 0; }
+      </style>
+   </head>
+   <body>
+      <h1>Карта на общините в България & Резултати от НВО</h1>
+      <!-- Map -->
+      <div id="tooltip" class="tooltip"></div>
+      <svg id="map" viewBox="0 0 1000 600"></svg>
+      <!-- Exam controls -->
+      <!-- <label for="yearSelect">Избери година:</label> -->
+      <!-- <select id="yearSelect"></select> -->
+      <div id="tableContainer"></div>
+      <!-- Charts -->
+      <canvas id="avgChart" width="800" height="300"></canvas>
+      <canvas id="partChart" width="800" height="300"></canvas>
+      <script src="https://d3js.org/d3.v7.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+      <script src="./data.js"></script>
+      <script>
+         /* ----------------- MAP ----------------- */
+         const svg = d3.select("#map");
+         const path = d3.geoPath();
+         const tooltip = d3.select("#tooltip");
+         const container = document.getElementById('tableContainer');
+         
+         async function init() {
+            async function drawMap() {
+             function renderMap(geojson, csvData, summary) {
+                console.log(summary)
+                const nameByCode = {};
+                csvData.forEach(d => {
+                  nameByCode[d.code || d.EKATTE || d.nuts4] = d.name;
+                });
+            
+                const projection = d3.geoMercator().fitSize([1000, 600], geojson);
+                path.projection(projection);
+            
+                const municipalities = svg.selectAll("path.municipality")
+                  .data(geojson.features)
+                  .enter()
+                  .append("path")
+                  .attr("class", "municipality")
+                  .attr("d", path);
+            
+                const highlight = svg.append("path")
+                  .attr("class", "highlight");
+            
+                municipalities
+                  .on("mouseover", function(event, d) {
+                    const code = d.properties.nuts4;
+                    const name = nameByCode[code] || `(${code})`;
+                    highlight.attr("d", path(d)).classed("visible", true);
+                    tooltip.classed("visible", true).html(name);
+                  })
+                  .on("mousemove", function(event) {
+                    tooltip.style("left", (event.pageX + 8) + "px")
+                          .style("top", (event.pageY + 8) + "px");
+                  })
+                  .on("mouseout", function() {
+                    highlight.classed("visible", false);
+                    tooltip.classed("visible", false);
+                  });
+             }
+             const geojson = await Data.geojson();
+             const csv = await Data.municip();
+             const summary = await Data.summary();
+             await renderMap(geojson, csv, summary);
+           }
+           await drawMap();
+         }
+         init();
+      </script>
+   </body>
 </html>

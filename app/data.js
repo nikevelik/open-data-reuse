@@ -1,7 +1,7 @@
 
 const Data = {
-  geojson: async() => d3.json("https://raw.githubusercontent.com/yurukov/Bulgaria-geocoding/master/municipalities.geojson"),
-  municip: async() => d3.csv("https://raw.githubusercontent.com/yurukov/Bulgaria-geocoding/master/municipalities.csv"), 
+  geojson: async() => d3.json("./source/map/municipalities.geojson"),
+  municip: async() => d3.csv("./source/map/municipalities.csv"), 
   summary: async() => {
     const years = [2018, 2019, 2020, 2021, 2022, 2023, 2024];
       const exam = async(year) => {
